@@ -46,7 +46,7 @@ This median filtering approach works well up to `contrast/noise_level > 2` and p
 
 Given that this is an inverse problem, we explored common computer vision inverse problem techniques. **Diffusion models (DDPM)** reconstruct images from pure Gaussian noise by predicting a noise map at each step and subtracting it from a more noisy image to obtain a less noisy one.
 
-We built a **tiny U-Net** for one-step noise map prediction. This approach works incredibly well for denoising and increasing image contrast for all training data and challenge data, for both single particle and multi-particle scenarios.
+We built a **tiny U-Net** for one-step noise map prediction. This approach works well for denoising and increasing image contrast on multi-particle training and challenge data.
 
 **However**, it still struggles with diffusion coefficient prediction, just like the median filter. The neural network prediction essentially hallucinates the true signals as well, introducing artifacts that corrupt the high-frequency information needed for accurate Brownian motion analysis.
 
@@ -137,18 +137,18 @@ The deep learning pipeline uses a multi-task U-Net that combines denoising and l
    - Applies subpixel refinement using quadratic interpolation
    - Sorts peaks by intensity and selects the top peaks
 
-**Current Status**: The locator works well for **single particle tracking under moderate noise conditions**. Performance for multi-particle scenarios and high noise conditions is still being improved.
+**Current Status**: The locator is designed and trained for **multi-particle tracking**. Performance under high noise conditions is still being improved.
 
 ### Demo Visualization
 
 ![Demo Comparison](demo.png)
 
-The above visualization shows a comparison between classical (median filtering) and deep learning (U-Net denoising + heatmap-based locator) approaches. The top row demonstrates tracking a single particle under high noise conditions, while the bottom row shows moderate noise conditions. The deep learning pipeline successfully:
+The above visualization shows a comparison between classical (median filtering) and deep learning (U-Net denoising + heatmap-based locator) approaches across multi-particle examples. The deep learning pipeline:
 - **Denoises** the input using the U-Net denoiser (bottom row, column 2)
 - **Segments** particle regions using the predicted heatmap (bottom row, column 3)
-- **Tracks** the particle trajectory accurately (bottom row, column 4)
+- **Tracks** particle trajectories accurately (bottom row, column 4)
 
-The heatmap-based locator architecture enables stable keypoint detection that works reliably for single particle tracking under moderate noise conditions.
+The heatmap-based locator architecture enables stable multi-particle keypoint detection under moderate noise conditions.
 
 ### Trajectory Analysis
 

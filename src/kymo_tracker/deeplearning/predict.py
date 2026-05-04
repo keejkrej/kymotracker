@@ -89,13 +89,6 @@ def extract_peaks_from_heatmap(
                 if track_idx < max_peaks:
                     trajectories[track_idx][t] = peak_pos
     
-    # Remove trajectories that are all NaN
-    trajectories = [traj for traj in trajectories if np.any(~np.isnan(traj))]
-    
-    # Ensure at least one trajectory
-    if not trajectories:
-        trajectories.append(np.full(T, np.nan))
-    
     return trajectories
 
 
@@ -122,19 +115,26 @@ def create_mask_from_centers_widths(
     mask = np.zeros((T, W), dtype=bool)
     labeled_mask = np.zeros((T, W), dtype=int)
     
-    n_tracks = centers.shape[1] if centers.ndim > 1 else 1
+    if centers.ndim != 2:
+        raise ValueError(f"centers must be 2D (time, tracks); got shape {centers.shape}")
+    if widths.ndim != 2:
+        raise ValueError(f"widths must be 2D (time, tracks); got shape {widths.shape}")
+    if centers.shape != widths.shape:
+        raise ValueError(
+            f"centers and widths must have the same shape; got {centers.shape} and {widths.shape}"
+        )
+    if centers.shape[1] < 2:
+        raise ValueError("at least two tracks are required")
+
+    n_tracks = centers.shape[1]
     
     for track_idx in range(n_tracks):
-        if centers.ndim == 1:
-            track_centers = centers
-            track_widths = widths if isinstance(widths, (int, float)) else widths
-        else:
-            track_centers = centers[:, track_idx]
-            track_widths = widths[:, track_idx]
+        track_centers = centers[:, track_idx]
+        track_widths = widths[:, track_idx]
         
         for t in range(T):
             center = track_centers[t]
-            width = track_widths[t] if not isinstance(track_widths, (int, float)) else track_widths
+            width = track_widths[t]
             
             # Skip if width is too small or center is invalid
             if width < threshold or np.isnan(center) or center < 0 or center >= W:
@@ -195,10 +195,6 @@ def extract_trajectories_from_mask(
                         traj[t] = max_idx
         
         trajectories.append(traj)
-    
-    # Ensure at least one trajectory
-    if not trajectories:
-        trajectories.append(np.full(T, np.nan))
     
     return trajectories
 
@@ -284,13 +280,6 @@ def extract_trajectories_from_heatmap(
                         trajectories[track_idx][t] = peak_idx
                 else:
                     trajectories[track_idx][t] = peak_idx
-    
-    # Remove trajectories that are all NaN
-    trajectories = [traj for traj in trajectories if not np.all(np.isnan(traj))]
-    
-    # Ensure at least one trajectory
-    if not trajectories:
-        trajectories.append(np.full(T, np.nan))
     
     return trajectories
 
@@ -479,10 +468,6 @@ def link_trajectories_across_slices(
                             linked_traj[global_t] = (linked_traj[global_t] + traj[t]) / 2.0
         
         linked_trajectories.append(linked_traj)
-    
-    # Ensure at least one trajectory
-    if not linked_trajectories:
-        linked_trajectories.append(np.full(total_length, np.nan))
     
     return linked_trajectories
 

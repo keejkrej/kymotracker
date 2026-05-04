@@ -59,14 +59,14 @@ def estimate_diffusion_msd_fit(positions_um, dt=1, dx = 0.5, max_lag=10):
     return D_um2_ms
 
 
-def generate_kymograph(length=16, width=512, contrast=1.0, diffusion=1.0,
+def generate_kymograph(length=16, width=512, contrast=None, diffusion=None,
                        noise_level=1.0, peak_width=1.0, dt=1.0, dx=0.5,
                        seed=None):
     """
     Multi-particle Brownian kymograph.
 
-    contrast: float or list/array of floats (one per particle)
-    diffusion: float or list/array of floats (um^2/ms, one per particle)
+    contrast: list/array of floats (one per particle)
+    diffusion: list/array of floats (um^2/ms, one per particle)
     peak_width: global Gaussian width (micrometers)
     dt: time step (ms)
     dx: spatial sampling (micrometers)
@@ -74,32 +74,31 @@ def generate_kymograph(length=16, width=512, contrast=1.0, diffusion=1.0,
     Returns:
         noisy : (length, width)
         gt    : (length, width) sum of particle Gaussians
-        paths : (n_particles, length) particle positions (in samples)
+        paths : (n_tracks, length) particle positions (in samples)
     """
     if seed is not None:
         np.random.seed(seed)
 
-    # Normalize inputs to lists
-    if np.isscalar(contrast):
-        contrasts = [float(contrast)]
-    else:
-        contrasts = list(contrast)
+    if contrast is None or diffusion is None:
+        raise ValueError("contrast and diffusion are required for multi-particle simulation.")
+    if np.isscalar(contrast) or np.isscalar(diffusion):
+        raise ValueError("contrast and diffusion must describe at least two particles.")
 
-    if np.isscalar(diffusion):
-        diffusions = [float(diffusion)]
-    else:
-        diffusions = list(diffusion)
+    contrasts = list(contrast)
+    diffusions = list(diffusion)
 
     if len(contrasts) != len(diffusions):
         raise ValueError("contrast and diffusion must have same length when lists are provided.")
+    if len(contrasts) < 2:
+        raise ValueError("at least two particles are required.")
 
-    n_particles = len(contrasts)
+    n_tracks = len(contrasts)
     # Initial positions: distribute evenly across the width
-    positions = np.linspace(0, width - 1, n_particles+1, endpoint=False).astype(float)[1:]
+    positions = np.linspace(0, width - 1, n_tracks + 1, endpoint=False).astype(float)[1:]
     
 
     gt = np.zeros((length, width), dtype=float)
-    paths = np.zeros((n_particles, length), dtype=float)
+    paths = np.zeros((n_tracks, length), dtype=float)
     xs = np.arange(width, dtype=float)
     w_samples = peak_width / dx  # global width in samples
 
@@ -107,7 +106,7 @@ def generate_kymograph(length=16, width=512, contrast=1.0, diffusion=1.0,
 
     for t in range(length):
         row = np.zeros(width, dtype=float)
-        for i in range(n_particles):
+        for i in range(n_tracks):
             # Brownian step
             positions[i] += np.random.normal(0, step_sigmas[i])
             # Reflect boundaries
@@ -141,11 +140,6 @@ def find_max_subpixel(I):
             positions.append(max_idx + delta)
     return np.array(positions)
 
-
-def load_challenge_data(index):
-    filename = f"data/kymograph_noisy_{index}.npy"
-    data = np.load(filename)
-    return data
 
 def load_challenge_data_multiple_particles(index):
     filename = f"data/kymograph_noisy_multiple_particles_{index}.npy"

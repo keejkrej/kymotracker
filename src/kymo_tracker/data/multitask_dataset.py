@@ -7,7 +7,8 @@ import torch
 from torch.utils.data import Dataset
 from typing import Union, Tuple, Optional
 
-from kymo_tracker.utils.helpers import generate_kymograph, get_diffusion_coefficient
+from kymo_tracker.data.simulation import generate_multiparticle_kymograph
+from kymo_tracker.utils.helpers import get_diffusion_coefficient
 
 
 class MultiTaskDataset(Dataset):
@@ -28,8 +29,8 @@ class MultiTaskDataset(Dataset):
         radii_nm: Union[float, Tuple[float, float]] = (3.0, 70.0),
         contrast: Union[float, Tuple[float, float]] = (0.5, 1.1),
         noise_level: Union[float, Tuple[float, float]] = (0.08, 0.8),
-        multi_trajectory_prob: float = 1.0,
         max_trajectories: int = 3,
+        min_trajectories: int = 2,
         mask_peak_width_samples: float = 10.0,
         particle_peak_width_samples: Optional[float] = None,
         mode: str = "heatmap",
@@ -45,8 +46,8 @@ class MultiTaskDataset(Dataset):
             radii_nm: Particle radius range in nanometers (single value or tuple)
             contrast: Contrast range (single value or tuple)
             noise_level: Noise level range (single value or tuple)
-            multi_trajectory_prob: Probability of generating multiple trajectories
             max_trajectories: Maximum number of trajectories per sample
+            min_trajectories: Minimum number of trajectories per sample
             mask_peak_width_samples: Target width for heatmap/binary mask training (in pixels)
             mode: "heatmap" or "segmentation" - determines target type
             particle_peak_width_samples: Actual particle width for generation (in pixels).
@@ -56,6 +57,14 @@ class MultiTaskDataset(Dataset):
         self.n_samples = n_samples
         self.width = width
         self.window_length = window_length
+        if min_trajectories < 2:
+            raise ValueError("min_trajectories must be at least 2 for multi-particle training")
+        if max_trajectories < min_trajectories:
+            raise ValueError(
+                f"max_trajectories ({max_trajectories}) must be >= "
+                f"min_trajectories ({min_trajectories})"
+            )
+        self.min_trajectories = min_trajectories
         self.max_trajectories = max_trajectories
         self.mask_peak_width_samples = mask_peak_width_samples
         if mode not in ["heatmap", "segmentation"]:
@@ -83,8 +92,6 @@ class MultiTaskDataset(Dataset):
         else:
             self.noise_range = noise_level
             
-        self.multi_trajectory_prob = multi_trajectory_prob
-        
         if seed is not None:
             np.random.seed(seed)
             torch.manual_seed(seed)
@@ -157,11 +164,10 @@ class MultiTaskDataset(Dataset):
         Returns:
             Tuple of (noisy, true_noise, target) where target is either heatmap or binary mask
         """
-        # Determine number of trajectories
-        if np.random.rand() < self.multi_trajectory_prob:
-            n_trajectories = np.random.randint(1, self.max_trajectories + 1)
-        else:
-            n_trajectories = 1
+        n_trajectories = np.random.randint(
+            self.min_trajectories,
+            self.max_trajectories + 1,
+        )
         
         # Sample parameters
         radii = [
@@ -179,11 +185,11 @@ class MultiTaskDataset(Dataset):
         
         # Generate kymograph directly at window size (16 time frames, 512 spatial pixels)
         # Use fixed particle width for denoiser training (separate from heatmap target width)
-        noisy_window, gt_window, paths_window = generate_kymograph(
+        noisy_window, gt_window, paths_window = generate_multiparticle_kymograph(
             length=self.window_length,  # Generate 16 time frames directly
             width=self.width,  # 512 spatial pixels
-            diffusion=diffusions if len(diffusions) > 1 else diffusions[0],
-            contrast=contrasts if len(contrasts) > 1 else contrasts[0],
+            diffusion=diffusions,
+            contrast=contrasts,
             noise_level=noise_level,
             peak_width=self.particle_peak_width_samples * 0.5,  # Convert samples to micrometers
             dt=1.0,

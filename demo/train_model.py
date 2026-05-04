@@ -28,7 +28,7 @@ from kymo_tracker.deeplearning.training.config import (
     DEFAULT_RADII_NM,
     DEFAULT_CONTRAST,
     DEFAULT_NOISE_LEVEL,
-    DEFAULT_MULTI_TRAJECTORY_PROB,
+    DEFAULT_MIN_TRAJECTORIES,
     DEFAULT_MAX_TRAJECTORIES,
 )
 
@@ -103,7 +103,7 @@ def main():
         radii_nm=DEFAULT_RADII_NM,
         contrast=DEFAULT_CONTRAST,
         noise_level=DEFAULT_NOISE_LEVEL,
-        multi_trajectory_prob=DEFAULT_MULTI_TRAJECTORY_PROB,
+        min_trajectories=DEFAULT_MIN_TRAJECTORIES,
         max_trajectories=DEFAULT_MAX_TRAJECTORIES,
         mask_peak_width_samples=DEFAULT_MASK_PEAK_WIDTH_SAMPLES,
     )

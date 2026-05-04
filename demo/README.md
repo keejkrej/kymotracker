@@ -23,8 +23,8 @@ uv run python demo/run_demo.py
    - Suitable for systems with limited RAM (40GB) and VRAM (24GB)
 
 2. **Generates 5 test cases**:
-   - Case 1: Single particle, low noise
-   - Case 2: Single particle, high noise
+   - Case 1: Two particles, low noise
+   - Case 2: Two particles, high noise
    - Case 3: Two particles, moderate noise
    - Case 4: Three particles, moderate noise
    - Case 5: Two particles, high noise
@@ -43,8 +43,8 @@ uv run python demo/run_demo.py
 ## Output
 
 All plots are saved to `demo/results/`:
-- `comparison_case_01_single_particle_(low_noise).png`
-- `comparison_case_02_single_particle_(high_noise).png`
+- `comparison_case_01_two_particles_(low_noise).png`
+- `comparison_case_02_two_particles_(high_noise).png`
 - `comparison_case_03_two_particles_(moderate_noise).png`
 - `comparison_case_04_three_particles_(moderate_noise).png`
 - `comparison_case_05_two_particles_(high_noise).png`

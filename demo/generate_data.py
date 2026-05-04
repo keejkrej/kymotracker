@@ -10,10 +10,8 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 sys.path.insert(0, str(project_root))
 
-from kymo_tracker.utils.helpers import (
-    generate_kymograph,
-    get_diffusion_coefficient,
-)
+from kymo_tracker.data.simulation import generate_multiparticle_kymograph
+from kymo_tracker.utils.helpers import get_diffusion_coefficient
 
 
 def generate_demo_cases(output_dir: Path):
@@ -21,60 +19,48 @@ def generate_demo_cases(output_dir: Path):
     output_dir.mkdir(parents=True, exist_ok=True)
     cases = []
     
-    # Case 1: Single particle, low noise
-    print("Generating case 1: Single particle, low noise...")
-    radius = 10.0
-    diffusion = get_diffusion_coefficient(radius)
-    noisy, gt, paths = generate_kymograph(
+    # Case 1: Two particles, low noise
+    print("Generating case 1: Two particles, low noise...")
+    radii = [10.0, 18.0]
+    diffusions = [get_diffusion_coefficient(radius) for radius in radii]
+    noisy, gt, paths = generate_multiparticle_kymograph(
         length=512, width=512,
-        diffusion=diffusion,
-        contrast=0.8,
+        diffusion=diffusions,
+        contrast=[0.8, 0.65],
         noise_level=0.15,
         peak_width=1.0,
         dx=0.5, dt=1.0,
         seed=42,
     )
-    if paths.ndim == 1:
-        true_paths_list = [paths]
-    elif paths.ndim == 2:
-        true_paths_list = [paths[i] for i in range(paths.shape[0])]
-    else:
-        true_paths_list = []
     
     case1_path = output_dir / "case_01.npy"
     np.save(case1_path, noisy)
     cases.append({
-        'name': 'Single Particle (Low Noise)',
+        'name': 'Two Particles (Low Noise)',
         'noisy_path': str(case1_path),
-        'true_paths': true_paths_list,
+        'true_paths': [paths[i] for i in range(paths.shape[0])],
     })
     
-    # Case 2: Single particle, high noise
-    print("Generating case 2: Single particle, high noise...")
-    radius = 15.0
-    diffusion = get_diffusion_coefficient(radius)
-    noisy, gt, paths = generate_kymograph(
+    # Case 2: Two particles, high noise
+    print("Generating case 2: Two particles, high noise...")
+    radii = [12.0, 24.0]
+    diffusions = [get_diffusion_coefficient(radius) for radius in radii]
+    noisy, gt, paths = generate_multiparticle_kymograph(
         length=512, width=512,
-        diffusion=diffusion,
-        contrast=0.6,
+        diffusion=diffusions,
+        contrast=[0.6, 0.45],
         noise_level=0.4,
         peak_width=1.0,
         dx=0.5, dt=1.0,
         seed=43,
     )
-    if paths.ndim == 1:
-        true_paths_list = [paths]
-    elif paths.ndim == 2:
-        true_paths_list = [paths[i] for i in range(paths.shape[0])]
-    else:
-        true_paths_list = []
     
     case2_path = output_dir / "case_02.npy"
     np.save(case2_path, noisy)
     cases.append({
-        'name': 'Single Particle (High Noise)',
+        'name': 'Two Particles (High Noise)',
         'noisy_path': str(case2_path),
-        'true_paths': true_paths_list,
+        'true_paths': [paths[i] for i in range(paths.shape[0])],
     })
     
     # Case 3: Two particles, moderate noise
@@ -82,7 +68,7 @@ def generate_demo_cases(output_dir: Path):
     radius1, radius2 = 8.0, 20.0
     diffusion1 = get_diffusion_coefficient(radius1)
     diffusion2 = get_diffusion_coefficient(radius2)
-    noisy, gt, paths = generate_kymograph(
+    noisy, gt, paths = generate_multiparticle_kymograph(
         length=512, width=512,
         diffusion=[diffusion1, diffusion2],
         contrast=[0.7, 0.5],
@@ -103,7 +89,7 @@ def generate_demo_cases(output_dir: Path):
     print("Generating case 4: Three particles, moderate noise...")
     radii = [5.0, 12.0, 25.0]
     diffusions = [get_diffusion_coefficient(r) for r in radii]
-    noisy, gt, paths = generate_kymograph(
+    noisy, gt, paths = generate_multiparticle_kymograph(
         length=512, width=512,
         diffusion=diffusions,
         contrast=[0.8, 0.6, 0.5],
@@ -125,7 +111,7 @@ def generate_demo_cases(output_dir: Path):
     radius1, radius2 = 10.0, 18.0
     diffusion1 = get_diffusion_coefficient(radius1)
     diffusion2 = get_diffusion_coefficient(radius2)
-    noisy, gt, paths = generate_kymograph(
+    noisy, gt, paths = generate_multiparticle_kymograph(
         length=512, width=512,
         diffusion=[diffusion1, diffusion2],
         contrast=[0.5, 0.4],

@@ -3,7 +3,6 @@
 import numpy as np
 from pathlib import Path
 import sys
-import os
 
 # Add project root and src to path
 project_root = Path(__file__).parent.parent
@@ -11,10 +10,9 @@ sys.path.insert(0, str(project_root / "src"))
 sys.path.insert(0, str(project_root))
 
 from kymo_tracker.utils.helpers import (
-    generate_kymograph,
     get_diffusion_coefficient,
-    find_max_subpixel,
 )
+from kymo_tracker.data.simulation import generate_multiparticle_kymograph
 from kymo_tracker.classical.pipeline import classical_median_threshold_tracking
 from kymo_tracker.deeplearning.training.config import (
     DEFAULT_EPOCHS,
@@ -24,7 +22,7 @@ from kymo_tracker.deeplearning.training.config import (
     DEFAULT_RADII_NM,
     DEFAULT_CONTRAST,
     DEFAULT_NOISE_LEVEL,
-    DEFAULT_MULTI_TRAJECTORY_PROB,
+    DEFAULT_MIN_TRAJECTORIES,
     DEFAULT_MAX_TRAJECTORIES,
 )
 from kymo_tracker.deeplearning.training.multitask import (
@@ -51,14 +49,7 @@ def run_classical_pipeline(kymograph_noisy):
         min_component_size=50,  # Increased from 8 to filter out small noise regions
     )
     
-    # Extract trajectories
-    trajectories = []
-    if result.trajectories:
-        for traj in result.trajectories:
-            trajectories.append(traj)
-    # Ensure at least one empty trajectory if none found
-    if not trajectories:
-        trajectories.append(np.full(len(kymograph_noisy), np.nan))
+    trajectories = list(result.trajectories)
     
     # Create combined mask from all instance masks
     combined_mask = np.zeros_like(kymograph_noisy, dtype=bool)
@@ -95,6 +86,7 @@ def run_deeplearning_pipeline(kymograph_noisy, model, device):
         slice_trajectories_list,
         chunk_size=chunk_size,
         overlap=overlap,
+        total_length=T,
     )
     
     # Reconstruct full outputs for visualization
@@ -108,10 +100,6 @@ def run_deeplearning_pipeline(kymograph_noisy, model, device):
         window[:fade_len] = np.linspace(0, 1, fade_len)
         window[-fade_len:] = np.linspace(1, 0, fade_len)
     
-    centers_full = None
-    widths_full = None
-    temporal_weights = np.zeros((T, 1), dtype=np.float32)
-    
     start = 0
     for result in slice_results:
         end = min(start + chunk_size, T)
@@ -122,21 +110,18 @@ def run_deeplearning_pipeline(kymograph_noisy, model, device):
         heatmap_full[start:end] += result['heatmap'] * weight_chunk
         weights[start:end] += weight_chunk
         
-        if centers_full is None:
-            n_tracks = result['centers'].shape[1] if result['centers'].ndim > 1 else 1
-            centers_full = np.zeros((T, n_tracks), dtype=np.float32)
-            widths_full = np.zeros((T, n_tracks), dtype=np.float32)
-        
-        centers_full[start:end] += result['centers'] * weight_chunk
-        widths_full[start:end] += result['widths'] * weight_chunk
-        temporal_weights[start:end] += weight_chunk
-        
         start += chunk_size - overlap
     
     denoised_full = np.divide(denoised_full, weights, out=np.zeros_like(denoised_full), where=weights > 0)
     heatmap_full = np.divide(heatmap_full, weights, out=np.zeros_like(heatmap_full), where=weights > 0)
-    centers_full = np.divide(centers_full, temporal_weights, out=np.zeros_like(centers_full), where=temporal_weights > 0)
-    widths_full = np.divide(widths_full, temporal_weights, out=np.zeros_like(widths_full), where=temporal_weights > 0)
+    n_tracks = len(linked_trajectories)
+    centers_full = np.full((T, n_tracks), np.nan, dtype=np.float32)
+    widths_full = np.full((T, n_tracks), np.nan, dtype=np.float32)
+
+    for track_idx, traj in enumerate(linked_trajectories):
+        traj_array = np.asarray(traj)
+        actual_len = min(T, len(traj_array))
+        centers_full[:actual_len, track_idx] = traj_array[:actual_len]
     
     return {
         'denoised': denoised_full,
@@ -151,55 +136,42 @@ def generate_demo_cases():
     """Generate 5 test cases with different scenarios."""
     cases = []
     
-    # Case 1: Single particle, low noise
-    print("Generating case 1: Single particle, low noise...")
-    radius = 10.0
-    diffusion = get_diffusion_coefficient(radius)
-    noisy, gt, paths = generate_kymograph(
+    # Case 1: Two particles, low noise
+    print("Generating case 1: Two particles, low noise...")
+    radii = [10.0, 18.0]
+    diffusions = [get_diffusion_coefficient(radius) for radius in radii]
+    noisy, gt, paths = generate_multiparticle_kymograph(
         length=512, width=512,
-        diffusion=diffusion,
-        contrast=0.8,
+        diffusion=diffusions,
+        contrast=[0.8, 0.65],
         noise_level=0.15,
         peak_width=1.0,
         dx=0.5, dt=1.0,
         seed=42,
     )
-    # Handle paths: always 2D (n_particles, length), convert to list
-    if paths.ndim == 1:
-        true_paths_list = [paths]
-    elif paths.ndim == 2:
-        true_paths_list = [paths[i] for i in range(paths.shape[0])]
-    else:
-        true_paths_list = []
     cases.append({
-        'name': 'Single Particle (Low Noise)',
+        'name': 'Two Particles (Low Noise)',
         'noisy': noisy,
-        'true_paths': true_paths_list,
+        'true_paths': [paths[i] for i in range(paths.shape[0])],
     })
     
-    # Case 2: Single particle, high noise
-    print("Generating case 2: Single particle, high noise...")
-    radius = 15.0
-    diffusion = get_diffusion_coefficient(radius)
-    noisy, gt, paths = generate_kymograph(
+    # Case 2: Two particles, high noise
+    print("Generating case 2: Two particles, high noise...")
+    radii = [12.0, 24.0]
+    diffusions = [get_diffusion_coefficient(radius) for radius in radii]
+    noisy, gt, paths = generate_multiparticle_kymograph(
         length=512, width=512,
-        diffusion=diffusion,
-        contrast=0.6,
+        diffusion=diffusions,
+        contrast=[0.6, 0.45],
         noise_level=0.4,
         peak_width=1.0,
         dx=0.5, dt=1.0,
         seed=43,
     )
-    if paths.ndim == 1:
-        true_paths_list = [paths]
-    elif paths.ndim == 2:
-        true_paths_list = [paths[i] for i in range(paths.shape[0])]
-    else:
-        true_paths_list = []
     cases.append({
-        'name': 'Single Particle (High Noise)',
+        'name': 'Two Particles (High Noise)',
         'noisy': noisy,
-        'true_paths': true_paths_list,
+        'true_paths': [paths[i] for i in range(paths.shape[0])],
     })
     
     # Case 3: Two particles, moderate noise
@@ -207,7 +179,7 @@ def generate_demo_cases():
     radius1, radius2 = 8.0, 20.0
     diffusion1 = get_diffusion_coefficient(radius1)
     diffusion2 = get_diffusion_coefficient(radius2)
-    noisy, gt, paths = generate_kymograph(
+    noisy, gt, paths = generate_multiparticle_kymograph(
         length=512, width=512,
         diffusion=[diffusion1, diffusion2],
         contrast=[0.7, 0.5],
@@ -226,7 +198,7 @@ def generate_demo_cases():
     print("Generating case 4: Three particles, moderate noise...")
     radii = [5.0, 12.0, 25.0]
     diffusions = [get_diffusion_coefficient(r) for r in radii]
-    noisy, gt, paths = generate_kymograph(
+    noisy, gt, paths = generate_multiparticle_kymograph(
         length=512, width=512,
         diffusion=diffusions,
         contrast=[0.8, 0.6, 0.5],
@@ -246,7 +218,7 @@ def generate_demo_cases():
     radius1, radius2 = 10.0, 18.0
     diffusion1 = get_diffusion_coefficient(radius1)
     diffusion2 = get_diffusion_coefficient(radius2)
-    noisy, gt, paths = generate_kymograph(
+    noisy, gt, paths = generate_multiparticle_kymograph(
         length=512, width=512,
         diffusion=[diffusion1, diffusion2],
         contrast=[0.5, 0.4],
@@ -295,7 +267,7 @@ def main():
             radii_nm=DEFAULT_RADII_NM,
             contrast=DEFAULT_CONTRAST,
             noise_level=DEFAULT_NOISE_LEVEL,
-            multi_trajectory_prob=DEFAULT_MULTI_TRAJECTORY_PROB,
+            min_trajectories=DEFAULT_MIN_TRAJECTORIES,
             max_trajectories=DEFAULT_MAX_TRAJECTORIES,
             mask_peak_width_samples=DEFAULT_MASK_PEAK_WIDTH_SAMPLES,
         )

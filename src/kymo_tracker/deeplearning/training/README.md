@@ -23,7 +23,8 @@ dataset = MultiTaskDataset(
     window_length=16,
     width=512,
     length=512,
-    multi_trajectory_prob=0.5,
+    min_trajectories=2,
+    max_trajectories=3,
 )
 config = MultiTaskConfig(
     epochs=12,

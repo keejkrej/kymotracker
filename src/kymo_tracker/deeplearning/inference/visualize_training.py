@@ -19,7 +19,6 @@ import shutil
 from kymo_tracker.data.multitask_dataset import MultiTaskDataset
 from kymo_tracker.deeplearning.training.multitask import load_multitask_model
 from kymo_tracker.utils.device import get_default_device
-from kymo_tracker.utils.helpers import get_diffusion_coefficient
 
 
 def visualize_training_example(
@@ -48,26 +47,41 @@ def visualize_training_example(
     show_segmentation_labels : bool
         Whether to overlay ground-truth trajectory markers
     """
-    # Get training example
-    noisy_tensor, noise_tensor, pos_tensor, width_tensor, mask_tensor = dataset[index]
+    noisy_tensor, noise_tensor, target_tensor = dataset[index]
     noisy = noisy_tensor.squeeze().numpy()
     true_noise = noise_tensor.squeeze().numpy()
-    gt_positions = pos_tensor.numpy()
-    gt_widths = width_tensor.numpy()
-    gt_mask = mask_tensor.numpy().astype(bool)
+    target_map = target_tensor.squeeze().numpy()
 
     # Get ground truth denoised
     gt_denoised = noisy - true_noise
     time_len, space_len = noisy.shape
     display_aspect = time_len / max(space_len, 1)
-    gt_positions_px = gt_positions * max(space_len - 1, 1)
-    gt_widths_px = gt_widths * max(space_len, 1)
+    n_tracks = model.max_tracks
+
+    from kymo_tracker.deeplearning.predict import (
+        extract_peaks_from_heatmap,
+        process_slice_independently,
+    )
+
+    gt_trajectories = extract_peaks_from_heatmap(
+        target_map,
+        max_peaks=n_tracks,
+        min_peak_value=0.1,
+    )
+    gt_positions_time = np.stack(gt_trajectories, axis=1)
+    gt_mask_time = ~np.isnan(gt_positions_time)
+    gt_positions_px = gt_positions_time.T
+    gt_widths_px = np.full_like(
+        gt_positions_px,
+        dataset.mask_peak_width_samples,
+        dtype=np.float32,
+    )
+    gt_mask = gt_mask_time.T
 
     # Run inference - process slice independently (noisy is already 16x512)
-    from kymo_tracker.deeplearning.predict import process_slice_independently
     model.eval()
     with torch.no_grad():
-        slice_result = process_slice_independently(model, noisy, device=device, max_tracks=n_tracks)
+        slice_result = process_slice_independently(model, noisy, device=device)
     denoised = slice_result["denoised"]
     trajectories = slice_result["trajectories"]
     heatmap = slice_result.get("heatmap", np.zeros_like(noisy))
@@ -104,7 +118,6 @@ def visualize_training_example(
 
     # Create visualization
     os.makedirs(output_dir, exist_ok=True)
-    n_tracks = gt_positions.shape[0]
     n_cols = 3  # First row always shows [noisy, GT, denoised]
     fig, axes = plt.subplots(
         2,
@@ -233,8 +246,6 @@ def visualize_training_example(
     print(f"    Denoising RMSE: {np.sqrt(np.mean((gt_denoised - denoised) ** 2)):.4f}")
 
     # Trajectory statistics
-    gt_positions_time = gt_positions_px.transpose(1, 0)
-    gt_mask_time = gt_mask.transpose(1, 0)
     denom = max(gt_mask_time.sum(), 1)
     center_mae = np.sum(np.abs(pred_centers - gt_positions_time) * gt_mask_time) / denom
     print(f"    Predicted centers shape: {pred_centers.shape}")
@@ -310,7 +321,7 @@ def visualize_training_set(
         length=dataset_length,
         width=dataset_width,
         max_trajectories=max_trajectories,
-        multi_trajectory_prob=1.0,  # 100% multi-particle examples
+        min_trajectories=2,
         window_length=16,
     )
 

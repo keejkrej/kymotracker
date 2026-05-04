@@ -22,14 +22,7 @@ def run_classical_pipeline(kymograph_noisy):
         min_component_size=50,  # Increased from 8 to filter out small noise regions
     )
     
-    # Extract trajectories
-    trajectories = []
-    if result.trajectories:
-        for traj in result.trajectories:
-            trajectories.append(traj)
-    # Ensure at least one empty trajectory if none found
-    if not trajectories:
-        trajectories.append(np.full(len(kymograph_noisy), np.nan))
+    trajectories = list(result.trajectories)
     
     # Create combined mask from all instance masks
     combined_mask = np.zeros_like(kymograph_noisy, dtype=bool)
